@@ -1,0 +1,120 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players            = game:GetService("Players")
+local LocalPlayer        = Players.LocalPlayer
+local RunService         = game:GetService("RunService")
+
+local Character          = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HumanoidRootPart   = Character:WaitForChild("HumanoidRootPart")
+
+-- Configuración
+local PET_NAME             = "Swift Samurai"
+local ROCK_NAME            = "Rock5M"
+local PROTEIN_EGG_NAME     = "ProteinEgg"
+local BASE_REP_SPEED       = 1000
+local SWIFT_SAMURAI_REP_SPEED = 2000
+local PROTEIN_EGG_INTERVAL = 30 * 60
+local DOUBLE_REP_MULTIPLIER = 2
+local REPS_PER_STEP        = 300
+local STEP_DELAY           = 0.05
+
+-- Ciclo de actividad/pausa (en segundos)
+local ACTIVE_TIME  = 21 * 60  -- 21 minutos
+local PAUSE_TIME   = 9 * 60   -- 9 minutos
+local CYCLE_LENGTH = ACTIVE_TIME + PAUSE_TIME
+
+-- Estado global de activación
+getgenv()._AutoRepFarmEnabled = not getgenv()._AutoRepFarmEnabled
+if getgenv()._AutoRepFarmEnabled then
+    warn("[Auto Rep Farm] ACTIVADO")
+else
+    warn("[Auto Rep Farm] DESACTIVADO")
+    return
+end
+
+-- Variables internas
+local hasSwiftSamurai    = false
+local lastProteinEggTime = 0
+local hasDoubleRepPass   = true
+local startTime          = tick()
+
+-- Funciones auxiliares
+local function equipPet()
+    hasSwiftSamurai = false
+    if LocalPlayer:FindFirstChild("petsFolder") and LocalPlayer.petsFolder:FindFirstChild("Unique") then
+        for _, pet in pairs(LocalPlayer.petsFolder.Unique:GetChildren()) do
+            if pet.Name == PET_NAME then
+                ReplicatedStorage.rEvents.equipPetEvent:FireServer("equipPet", pet)
+                hasSwiftSamurai = true
+                break
+            end
+        end
+    end
+end
+
+local function eatProteinEgg()
+    if LocalPlayer:FindFirstChild("Backpack") then
+        for _, item in pairs(LocalPlayer.Backpack:GetChildren()) do
+            if item.Name == PROTEIN_EGG_NAME then
+                ReplicatedStorage.rEvents.eatEvent:FireServer("eat", item)
+                break
+            end
+        end
+    end
+end
+
+local function hitRock()
+    local rock = workspace:FindFirstChild(ROCK_NAME)
+    if rock and HumanoidRootPart then
+        HumanoidRootPart.CFrame = rock.CFrame * CFrame.new(0, 0, -5)
+        ReplicatedStorage.rEvents.hitEvent:FireServer("hit", rock)
+    end
+end
+
+local function doReps(repSpeed)
+    task.spawn(function()
+        for i = 1, repSpeed, REPS_PER_STEP do
+            for _ = 1, math.min(REPS_PER_STEP, repSpeed - i + 1) do
+                if LocalPlayer:FindFirstChild("muscleEvent") then
+                    LocalPlayer.muscleEvent:FireServer("rep")
+                end
+            end
+            task.wait(STEP_DELAY)
+        end
+    end)
+end
+
+-- Bucle principal
+task.spawn(function()
+    equipPet()
+
+    while getgenv()._AutoRepFarmEnabled do
+        local now       = tick()
+        local cyclePos  = (now - startTime) % CYCLE_LENGTH
+
+        -- Sólo hacer reps durante los primeros ACTIVE_TIME segundos de cada ciclo
+        if cyclePos <= ACTIVE_TIME then
+            local repSpeed = SWIFT_SAMURAI_REP_SPEED
+            if hasDoubleRepPass then
+                repSpeed = repSpeed * DOUBLE_REP_MULTIPLIER
+            end
+            doReps(repSpeed)
+        else
+            -- Pausa de reps
+            -- Aquí podrías loggear o simplemente dejar pasar el tiempo
+            -- warn("[Auto Rep Farm] PAUSA DE REPS")
+        end
+
+        -- Comer huevo si correspondiera
+        if now - lastProteinEggTime >= PROTEIN_EGG_INTERVAL then
+            eatProteinEgg()
+            lastProteinEggTime = now
+        end
+
+        -- Golpear roca cada ~5 seg
+        if now % 5 < 1 then
+            hitRock()
+        end
+
+        task.wait(0.05)
+    end
+end)
