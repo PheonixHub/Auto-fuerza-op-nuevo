@@ -1,19 +1,19 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
-local RunService = game:GetService("RunService")
 
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 
--- Config
+-- Configuración
 local PET_NAME = "Swift Samurai"
 local ROCK_NAME = "Rock5M"
 local PROTEIN_EGG_NAME = "ProteinEgg"
-local REPS_PER_BURST = 2000
-local BURST_DELAY = 1 -- descanso entre ráfagas
 local PROTEIN_EGG_INTERVAL = 30 * 60
-local hasDoubleRepPass = true
+local REP_INTERVAL = 0.01 -- cada cuánto mandar un rep en modo activo
+local ACTIVE_DURATION = 8 -- segundos de reps
+local REST_DURATION = 3 -- segundos sin hacer nada
+local lastProteinEggTime = 0
 
 -- Activador global
 getgenv()._AutoRepFarmEnabled = not getgenv()._AutoRepFarmEnabled
@@ -23,9 +23,6 @@ else
     warn("[Auto Rep Farm] DESACTIVADO")
     return
 end
-
--- Variables
-local lastProteinEggTime = 0
 
 -- Funciones
 local function equipPet()
@@ -58,35 +55,37 @@ local function hitRock()
     end
 end
 
--- Función principal de ráfaga
-local function burstReps()
-    for _ = 1, REPS_PER_BURST do
+-- Función para spamear reps durante cierto tiempo
+local function spamRepsFor(duration)
+    local start = tick()
+    while tick() - start < duration and getgenv()._AutoRepFarmEnabled do
         if LocalPlayer:FindFirstChild("muscleEvent") then
             LocalPlayer.muscleEvent:FireServer("rep")
         end
+        task.wait(REP_INTERVAL)
     end
 end
 
--- Loop principal
+-- Bucle principal
 task.spawn(function()
     equipPet()
 
     while getgenv()._AutoRepFarmEnabled do
-        -- Proteína
+        -- Usar proteína si ya pasó el tiempo
         if tick() - lastProteinEggTime >= PROTEIN_EGG_INTERVAL then
             eatProteinEgg()
             lastProteinEggTime = tick()
         end
 
-        -- Golpear roca cada 10s
+        -- Golpear roca cada 10 segundos
         if tick() % 10 < 0.2 then
             hitRock()
         end
 
-        -- Hacer ráfaga
-        burstReps()
+        -- Fase activa: 8 segundos de reps
+        spamRepsFor(ACTIVE_DURATION)
 
-        -- Esperar para no subir ping
-        task.wait(BURST_DELAY)
+        -- Fase de descanso: 2 segundos
+        task.wait(REST_DURATION)
     end
 end)
