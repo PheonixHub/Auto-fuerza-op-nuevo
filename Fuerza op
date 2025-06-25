@@ -1,28 +1,21 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players            = game:GetService("Players")
-local LocalPlayer        = Players.LocalPlayer
-local RunService         = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
 
-local Character          = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local HumanoidRootPart   = Character:WaitForChild("HumanoidRootPart")
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 
--- Configuración
-local PET_NAME             = "Swift Samurai"
-local ROCK_NAME            = "Rock5M"
-local PROTEIN_EGG_NAME     = "ProteinEgg"
-local BASE_REP_SPEED       = 1000
-local SWIFT_SAMURAI_REP_SPEED = 2000
+-- Config
+local PET_NAME = "Swift Samurai"
+local ROCK_NAME = "Rock5M"
+local PROTEIN_EGG_NAME = "ProteinEgg"
+local REPS_PER_BURST = 2000
+local BURST_DELAY = 1 -- descanso entre ráfagas
 local PROTEIN_EGG_INTERVAL = 30 * 60
-local DOUBLE_REP_MULTIPLIER = 2
-local REPS_PER_STEP        = 300
-local STEP_DELAY           = 0.05
+local hasDoubleRepPass = true
 
--- Ciclo de actividad/pausa (en segundos)
-local ACTIVE_TIME  = 21 * 60  -- 21 minutos
-local PAUSE_TIME   = 9 * 60   -- 9 minutos
-local CYCLE_LENGTH = ACTIVE_TIME + PAUSE_TIME
-
--- Estado global de activación
+-- Activador global
 getgenv()._AutoRepFarmEnabled = not getgenv()._AutoRepFarmEnabled
 if getgenv()._AutoRepFarmEnabled then
     warn("[Auto Rep Farm] ACTIVADO")
@@ -31,20 +24,15 @@ else
     return
 end
 
--- Variables internas
-local hasSwiftSamurai    = false
+-- Variables
 local lastProteinEggTime = 0
-local hasDoubleRepPass   = true
-local startTime          = tick()
 
--- Funciones auxiliares
+-- Funciones
 local function equipPet()
-    hasSwiftSamurai = false
     if LocalPlayer:FindFirstChild("petsFolder") and LocalPlayer.petsFolder:FindFirstChild("Unique") then
         for _, pet in pairs(LocalPlayer.petsFolder.Unique:GetChildren()) do
             if pet.Name == PET_NAME then
                 ReplicatedStorage.rEvents.equipPetEvent:FireServer("equipPet", pet)
-                hasSwiftSamurai = true
                 break
             end
         end
@@ -70,51 +58,35 @@ local function hitRock()
     end
 end
 
-local function doReps(repSpeed)
-    task.spawn(function()
-        for i = 1, repSpeed, REPS_PER_STEP do
-            for _ = 1, math.min(REPS_PER_STEP, repSpeed - i + 1) do
-                if LocalPlayer:FindFirstChild("muscleEvent") then
-                    LocalPlayer.muscleEvent:FireServer("rep")
-                end
-            end
-            task.wait(STEP_DELAY)
+-- Función principal de ráfaga
+local function burstReps()
+    for _ = 1, REPS_PER_BURST do
+        if LocalPlayer:FindFirstChild("muscleEvent") then
+            LocalPlayer.muscleEvent:FireServer("rep")
         end
-    end)
+    end
 end
 
--- Bucle principal
+-- Loop principal
 task.spawn(function()
     equipPet()
 
     while getgenv()._AutoRepFarmEnabled do
-        local now       = tick()
-        local cyclePos  = (now - startTime) % CYCLE_LENGTH
-
-        -- Sólo hacer reps durante los primeros ACTIVE_TIME segundos de cada ciclo
-        if cyclePos <= ACTIVE_TIME then
-            local repSpeed = SWIFT_SAMURAI_REP_SPEED
-            if hasDoubleRepPass then
-                repSpeed = repSpeed * DOUBLE_REP_MULTIPLIER
-            end
-            doReps(repSpeed)
-        else
-            -- Pausa de reps
-            -- Aquí podrías loggear o simplemente dejar pasar el tiempo
-            -- warn("[Auto Rep Farm] PAUSA DE REPS")
-        end
-
-        -- Comer huevo si correspondiera
-        if now - lastProteinEggTime >= PROTEIN_EGG_INTERVAL then
+        -- Proteína
+        if tick() - lastProteinEggTime >= PROTEIN_EGG_INTERVAL then
             eatProteinEgg()
-            lastProteinEggTime = now
+            lastProteinEggTime = tick()
         end
 
-        -- Golpear roca cada ~5 seg
-        if now % 5 < 1 then
+        -- Golpear roca cada 10s
+        if tick() % 10 < 0.2 then
             hitRock()
         end
 
-        task.wait(0.05)
+        -- Hacer ráfaga
+        burstReps()
+
+        -- Esperar para no subir ping
+        task.wait(BURST_DELAY)
     end
 end)
